@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "accounting-mcp": {
+      "command": "node",
+      "args": ["/Users/macbookpro/GUSKI/accounting-mcp/dist/index.js"]
+    }
+  }
+}
