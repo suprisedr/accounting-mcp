@@ -82,6 +82,41 @@ export const tools = [
         },
     },
     {
+        name: "create_chart_of_account",
+        description: "Create a new chart of account entry for a company. " +
+            "Use this to add a parent account (e.g. 'Marketing & Advertising' with expense_class OPERATING) " +
+            "or a child account by supplying a parent_id. " +
+            "Account codes are auto-assigned by the server. " +
+            "After creating an account call get_chart_of_accounts to retrieve the new account ID before posting transactions. " +
+            "Requires prior login.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                company_id: { type: "string", description: "The ID of the company this account belongs to." },
+                account_name: { type: "string", description: "Human-readable name for the account (e.g. 'Digital Advertising')." },
+                account_type: {
+                    type: "string",
+                    enum: ["assets", "liabilities", "equity", "revenue", "expenses"],
+                    description: "The account type.",
+                },
+                expense_class: {
+                    type: "string",
+                    enum: ["OPERATING", "NON_OPERATING", "COST_OF_SALES"],
+                    description: "Required for top-level expense accounts. Omit for child accounts or non-expense types.",
+                },
+                parent_id: {
+                    type: "string",
+                    description: "ID of the parent account. Supply this to create a child account; omit to create a parent account.",
+                },
+                description: {
+                    type: "string",
+                    description: "Optional description of what this account is used for.",
+                },
+            },
+            required: ["company_id", "account_name", "account_type"],
+        },
+    },
+    {
         name: "suggest_chart_of_account",
         description: "Suggests industry-appropriate chart of account entries to add when no suitable account exists for a transaction line. Call this before blocking a transaction — present the returned suggestions to the user and ask whether they want to add one or proceed with an existing account.",
         inputSchema: {
@@ -116,6 +151,8 @@ export async function handle(name, args) {
             return handleCreateTransaction(args);
         case "get_transaction_by_reference":
             return handleGetTransactionByReference(args);
+        case "create_chart_of_account":
+            return handleCreateChartOfAccount(args);
         case "suggest_chart_of_account":
             return handleSuggestChartOfAccount(args);
         default:
@@ -232,6 +269,34 @@ async function handleGetTransactionByReference(args) {
     }
     return {
         content: [{ type: "text", text: JSON.stringify(data.transactionByReference, null, 2) }],
+    };
+}
+async function handleCreateChartOfAccount(args) {
+    const { company_id, account_name, account_type, expense_class, parent_id, description } = args;
+    const mutation = `
+    mutation CreateChartOfAccount($input: CreateChartOfAccountInput!) {
+      createChartOfAccount(input: $input) {
+        id
+        account_code
+        account_name
+        account_type
+        parent_id
+        parent_code
+        description
+        is_active
+      }
+    }
+  `;
+    const input = { company_id, account_name, account_type };
+    if (expense_class)
+        input.expense_class = expense_class;
+    if (parent_id)
+        input.parent_id = parent_id;
+    if (description)
+        input.description = description;
+    const data = (await graphqlRequest(mutation, { input }, true));
+    return {
+        content: [{ type: "text", text: JSON.stringify({ success: true, account: data.createChartOfAccount }, null, 2) }],
     };
 }
 const INDUSTRY_SUGGESTIONS = {
