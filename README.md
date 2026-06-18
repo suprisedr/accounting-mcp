@@ -1,2 +1,1 @@
-# accounting-mcp
-# accounting-mcp
+# chainbook-mcp

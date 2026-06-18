@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "accounting-mcp": {
+    "chainbook-mcp": {
       "command": "node",
       "args": ["/Users/macbookpro/GUSKI/accounting-mcp/dist/index.js"]
     }

@@ -1,5 +1,8 @@
 import { graphqlRequest } from "../lib/graphql.js";
-// Fields returned for every Invoice response
+const FLAG_RULE = "\n\nACTION FLAGGING (mandatory): If reviewing results reveals any issues " +
+    "(overdue invoices, unusually large or mismatched amounts, missing details, or concerns requiring follow-up), " +
+    "you MUST call create_action for each one — do not leave findings only in your text reply. " +
+    "Use related_type='invoice' and related_id to link the action to the relevant record.";
 const INVOICE_FIELDS = `
   id invoice_number customer_name customer_email customer_address
   invoice_date due_date status notes subtotal tax_total total
@@ -11,97 +14,76 @@ const INVOICE_FIELDS = `
 export const tools = [
     {
         name: "invoices",
-        description: "Manage invoices. Use the 'action' field to select the operation. Requires prior login.\n" +
-            "• list   — list all invoices for a company (requires: company_id)\n" +
-            "• get    — fetch a single invoice (requires: id)\n" +
-            "• create — create a new invoice (requires: company_id, customer_name, invoice_date, due_date, items)\n" +
-            "• update_status — change invoice status (requires: id, status)",
+        description: "Search invoices for a company. At least one filter must be provided. Requires prior login.\n" +
+            "\n" +
+            "INVOICE NUMBER FORMAT: INV-YYMMDD### (2-digit year, month, day, 3-digit sequence).\n" +
+            "Examples: INV-260403001 = first invoice on 2026-04-03; INV-2604 = all invoices from April 2026.\n" +
+            "Convert natural-language dates to YYYY-MM-DD before passing to the 'date' filter.\n" +
+            "\n" +
+            "Filters (all optional — supply at least one):\n" +
+            "• invoice_number — exact number OR a prefix (e.g. INV-260403 returns all invoices issued on 2026-04-03)\n" +
+            "• customer_name  — partial, case-insensitive customer name match\n" +
+            "• date           — exact invoice date as YYYY-MM-DD\n" +
+            "• status         — DRAFT | PENDING | PARTIALLY_PAID | PAID | OVERDUE | VOIDED | WRITE_OFF\n" +
+            "• total_min      — minimum invoice total (inclusive)\n" +
+            "• total_max      — maximum invoice total (inclusive)" +
+            FLAG_RULE,
         inputSchema: {
             type: "object",
             properties: {
-                action: {
-                    type: "string",
-                    enum: ["list", "get", "create", "update_status"],
-                    description: "Operation to perform.",
-                },
-                company_id: { type: "string", description: "Company ID. Required for: list, create." },
-                id: { type: "string", description: "Invoice ID. Required for: get, update_status." },
-                status: {
-                    type: "string",
-                    enum: ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"],
-                    description: "Invoice status. Required for: update_status. Optional for: create (defaults to DRAFT).",
-                },
-                customer_name: { type: "string", description: "Customer name. Required for: create." },
-                customer_email: { type: "string", description: "Customer email. Optional for: create." },
-                customer_address: { type: "string", description: "Customer address. Optional for: create." },
-                invoice_date: { type: "string", description: "Invoice date (YYYY-MM-DD). Required for: create." },
-                due_date: { type: "string", description: "Due date (YYYY-MM-DD). Required for: create." },
-                items: {
-                    type: "array",
-                    description: "Invoice line items. Required for: create. Each item references an inventory item by ID.",
-                    items: {
-                        type: "object",
-                        properties: {
-                            inventory_item_id: { type: "string", description: "ID of the inventory item to add." },
-                            quantity: { type: "number", description: "Quantity of the item." },
-                        },
-                        required: ["inventory_item_id", "quantity"],
-                    },
-                },
-                notes: { type: "string", description: "Optional notes." },
+                company_id: { type: "string", description: "Company ID. Required." },
+                invoice_number: { type: "string", description: "Full number (INV-260403001) or prefix (INV-260403) to match all invoices on that date." },
+                customer_name: { type: "string", description: "Partial customer name — case-insensitive." },
+                date: { type: "string", description: "Exact invoice date in YYYY-MM-DD format." },
+                status: { type: "string", enum: ["DRAFT", "PENDING", "PARTIALLY_PAID", "PAID", "OVERDUE", "VOIDED", "WRITE_OFF"], description: "Invoice status." },
+                total_min: { type: "number", description: "Minimum invoice total (inclusive)." },
+                total_max: { type: "number", description: "Maximum invoice total (inclusive)." },
             },
-            required: ["action"],
+            required: ["company_id"],
         },
     },
 ];
 export async function handle(name, args) {
     if (name !== "invoices")
         return null;
-    switch (args.action) {
-        case "list": {
-            const data = (await graphqlRequest(`query { invoices(company_id: "${args.company_id}") { ${INVOICE_FIELDS} } }`, undefined, true));
-            return { content: [{ type: "text", text: JSON.stringify(data.invoices, null, 2) }] };
-        }
-        case "get": {
-            const data = (await graphqlRequest(`query { invoice(id: "${args.id}") { ${INVOICE_FIELDS} } }`, undefined, true));
-            return { content: [{ type: "text", text: JSON.stringify(data.invoice, null, 2) }] };
-        }
-        case "create": {
-            const input = {
-                company_id: args.company_id,
-                customer_name: args.customer_name,
-                invoice_date: args.invoice_date,
-                due_date: args.due_date,
-                items: args.items,
-            };
-            if (args.customer_email)
-                input.customer_email = args.customer_email;
-            if (args.customer_address)
-                input.customer_address = args.customer_address;
-            if (args.status)
-                input.status = args.status;
-            if (args.notes)
-                input.notes = args.notes;
-            const data = (await graphqlRequest(`mutation CreateInvoice($input: CreateInvoiceInput!) {
-          createInvoice(input: $input) { ${INVOICE_FIELDS} }
-        }`, { input }, true));
-            return {
-                content: [
-                    { type: "text", text: JSON.stringify({ success: true, invoice: data.createInvoice }, null, 2) },
-                ],
-            };
-        }
-        case "update_status": {
-            const data = (await graphqlRequest(`mutation UpdateInvoiceStatus($id: ID!, $status: InvoiceStatus!) {
-          updateInvoiceStatus(id: $id, status: $status) { ${INVOICE_FIELDS} }
-        }`, { id: args.id, status: args.status }, true));
-            return {
-                content: [
-                    { type: "text", text: JSON.stringify({ success: true, invoice: data.updateInvoiceStatus }, null, 2) },
-                ],
-            };
-        }
-        default:
-            throw new Error(`Unknown invoice action: ${args.action}`);
+    const { company_id, invoice_number, customer_name, date, status, total_min, total_max } = args;
+    const hasFilter = invoice_number || customer_name || date || status || total_min != null || total_max != null;
+    if (!hasFilter) {
+        return {
+            content: [{ type: "text", text: JSON.stringify({ error: "At least one filter (invoice_number, customer_name, date, status, total_min, total_max) must be provided." }, null, 2) }],
+            isError: true,
+        };
     }
+    const data = (await graphqlRequest(`query SearchInvoices(
+      $companyId: ID!
+      $invoiceNumber: String
+      $customerName: String
+      $date: Date
+      $status: InvoiceStatus
+      $totalMin: Float
+      $totalMax: Float
+    ) {
+      searchInvoices(
+        company_id: $companyId
+        invoice_number: $invoiceNumber
+        customer_name: $customerName
+        date: $date
+        status: $status
+        total_min: $totalMin
+        total_max: $totalMax
+      ) { ${INVOICE_FIELDS} }
+    }`, {
+        companyId: company_id,
+        invoiceNumber: invoice_number ?? null,
+        customerName: customer_name ?? null,
+        date: date ?? null,
+        status: status ?? null,
+        totalMin: total_min ?? null,
+        totalMax: total_max ?? null,
+    }, true));
+    const results = data.searchInvoices ?? [];
+    if (results.length === 0) {
+        return { content: [{ type: "text", text: JSON.stringify({ found: false, message: "No invoices matched the given filters." }, null, 2) }] };
+    }
+    return { content: [{ type: "text", text: JSON.stringify({ count: results.length, invoices: results }, null, 2) }] };
 }

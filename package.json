@@ -1,7 +1,7 @@
 {
-  "name": "accounting-mcp",
+  "name": "chainbook-mcp",
   "version": "1.0.0",
-  "description": "MCP server for accounting GraphQL API",
+  "description": "MCP server for Chainbook accounting GraphQL API",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
