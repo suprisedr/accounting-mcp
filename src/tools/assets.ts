@@ -1,5 +1,24 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { graphqlRequest } from "../lib/graphql.js";
+import { graphqlRequest, getBearerToken } from "../lib/graphql.js";
+
+const API_BASE = "http://localhost:8000/api";
+
+async function apiPost(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const token = getBearerToken();
+  if (!token) throw new Error("Not authenticated. Please run the login tool first.");
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json() as Record<string, unknown>;
+  if (!response.ok) throw new Error((json.message as string) ?? `HTTP ${response.status}`);
+  return json;
+}
 
 const FLAG_RULE =
   "\n\nACTION FLAGGING (mandatory): After completing this operation, if you identify ANY issue, " +
@@ -123,7 +142,7 @@ export const tools: Tool[] = [
     description:
       "Dispose of a PPE asset under IAS 16. " +
       "USE THIS — NOT create_transaction — when an asset is sold, scrapped, or otherwise derecognised. " +
-      "The system posts the disposal journal entry automatically (gain/loss on disposal, derecognition of cost and accumulated depreciation) once the queue processes the request. " +
+      "The system records the disposal event immediately and dispatches the journal posting to a background job (AI selects accounts and posts the journal automatically). " +
       "Confirm the disposal date and any proceeds with the user before calling. " +
       "Requires prior login." +
       FLAG_RULE,
@@ -138,6 +157,102 @@ export const tools: Tool[] = [
         },
       },
       required: ["id", "disposal_date"],
+    },
+  },
+  {
+    name: "revalue_asset",
+    description:
+      "IAS 16.31 Revaluation Model — record a revaluation event for a PPE asset whose class uses the revaluation model. " +
+      "Pass the new IFRS fair-value carrying amount (after revaluation) and the effective date. " +
+      "The event is saved immediately and a background job dispatches the AI to post the full revaluation journal:\n" +
+      "  • Upward: eliminates accumulated depreciation, increases cost, credits Revaluation Surplus (OCI), and recognises IAS 12 deferred tax on the surplus.\n" +
+      "  • Downward: first exhausts any existing OCI surplus (IAS 16.40), then routes the excess to Impairment Loss (P&L).\n" +
+      "IMPORTANT: Only call this for assets whose PPE class accounting_policy is 'revaluation'. For cost-model assets, use impair_asset instead. " +
+      "Requires prior login." +
+      FLAG_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The asset ID to revalue." },
+        new_carrying_amount: {
+          type: "number",
+          description: "The IFRS fair-value carrying amount after revaluation. Must be positive.",
+        },
+        date: { type: "string", description: "Effective date of the revaluation in YYYY-MM-DD format." },
+      },
+      required: ["id", "new_carrying_amount", "date"],
+    },
+  },
+  {
+    name: "impair_asset",
+    description:
+      "IAS 36 Impairment — record an impairment event for a PPE asset when its recoverable amount falls below its carrying amount. " +
+      "The event is saved immediately and a background job dispatches the AI to post the impairment journal:\n" +
+      "  • For revaluation-model assets: first exhausts any remaining OCI Revaluation Surplus (IAS 36.60), then routes the excess to Impairment Loss (P&L).\n" +
+      "  • For cost-model assets: posts Dr Impairment Loss (P&L) / Cr Accumulated Impairment in full.\n" +
+      "Confirm the recoverable amount (higher of FVLCTS and VIU) with the user before calling. " +
+      "Requires prior login." +
+      FLAG_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The asset ID to impair." },
+        impairment_amount: {
+          type: "number",
+          description: "The impairment charge — difference between carrying amount and recoverable amount. Must be positive and not exceed the current carrying amount.",
+        },
+        date: { type: "string", description: "Impairment date in YYYY-MM-DD format." },
+        reason: {
+          type: "string",
+          description: "Brief reason for impairment (e.g. 'physical damage', 'market decline', 'obsolescence'). Included in the journal notes.",
+        },
+      },
+      required: ["id", "impairment_amount", "date"],
+    },
+  },
+  {
+    name: "reverse_impairment",
+    description:
+      "IAS 36.114 Impairment Reversal — record a reversal of a previously recognised impairment charge when the recoverable amount has recovered. " +
+      "The reversal is capped at the lesser of the cumulative impairment or what the carrying amount would have been without the impairment (no write-up above depreciated cost). " +
+      "The event is saved immediately and a background job dispatches the AI to post Dr Accumulated Impairment / Cr Impairment Reversal Income (P&L). " +
+      "IMPORTANT: Reversals of goodwill impairments are prohibited (IAS 36.124) — do not call this for goodwill. " +
+      "Requires prior login." +
+      FLAG_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The asset ID whose impairment to partially or fully reverse." },
+        reversal_amount: {
+          type: "number",
+          description: "The amount of the reversal. Capped automatically at accumulated impairment.",
+        },
+        date: { type: "string", description: "Reversal date in YYYY-MM-DD format." },
+      },
+      required: ["id", "reversal_amount", "date"],
+    },
+  },
+  {
+    name: "capitalise_subsequent_cost",
+    description:
+      "IAS 16.7 Subsequent Expenditure — record a subsequent cost event for an asset that meets the recognition criteria: " +
+      "they extend the asset's useful life, add productive capacity, or represent replacement of a significant component. " +
+      "DO NOT use this for routine maintenance and repairs — those are expensed via create_transaction. " +
+      "The event is saved immediately and a background job dispatches the AI to post Dr PPE Cost / Cr Bank or Payable and increase the asset's cost on the register. " +
+      "Requires prior login." +
+      FLAG_RULE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The asset ID to which the subsequent cost is added." },
+        amount: { type: "number", description: "Amount to capitalise." },
+        date: { type: "string", description: "Date of the expenditure in YYYY-MM-DD format." },
+        description: {
+          type: "string",
+          description: "Brief description of the expenditure (e.g. 'Engine overhaul extending life by 3 years', 'Roof replacement').",
+        },
+      },
+      required: ["id", "amount", "date"],
     },
   },
 ];
@@ -161,6 +276,14 @@ export async function handle(
       return handleUpdateAsset(args);
     case "dispose_asset":
       return handleDisposeAsset(args);
+    case "revalue_asset":
+      return handleRevalueAsset(args);
+    case "impair_asset":
+      return handleImpairAsset(args);
+    case "reverse_impairment":
+      return handleReverseImpairment(args);
+    case "capitalise_subsequent_cost":
+      return handleCapitaliseSubsequentCost(args);
     default:
       return null;
   }
@@ -185,7 +308,9 @@ async function handleGetAssets(args: Record<string, unknown>): Promise<ToolResul
         disposal_date
         disposal_proceeds
         last_depreciation_posted_on
-        ppe_class { id name }
+        accumulated_impairment
+        revaluation_surplus
+        ppe_class { id name useful_life_years depreciation_method accounting_policy }
         company   { id registered_name }
         posting_transaction  { id reference }
         disposal_transaction { id reference }
@@ -254,7 +379,7 @@ async function handleGetAssetDepreciationSchedule(args: Record<string, unknown>)
 }
 
 async function handleCreateAsset(args: Record<string, unknown>): Promise<ToolResult> {
-  const input: Record<string, unknown> = {
+  const body: Record<string, unknown> = {
     company_id: args.company_id,
     ppe_class_id: args.ppe_class_id,
     name: args.name,
@@ -267,45 +392,26 @@ async function handleCreateAsset(args: Record<string, unknown>): Promise<ToolRes
     "location",
     "residual_value",
     "useful_life_years",
+    "sars_wear_tear_years",
     "depreciation_method",
     "notes",
   ] as const) {
-    if (args[k] !== undefined) input[k] = args[k];
+    if (args[k] !== undefined) body[k] = args[k];
   }
 
-  const mutation = `
-    mutation Create($input: CreateAssetInput!) {
-      createAsset(input: $input) {
-        id
-        name
-        status
-      }
-    }
-  `;
-
-  const data = (await graphqlRequest(mutation, { input }, true)) as { createAsset: unknown };
+  const result = await apiPost("/assets", body);
 
   return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          {
-            success: true,
-            asset: data.createAsset,
-            note: "Recognition journal entry will be posted automatically on the next queue tick — posting_transaction_id will populate shortly.",
-          },
-          null,
-          2
-        ),
-      },
-    ],
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
   };
 }
 
 async function handleUpdateAsset(args: Record<string, unknown>): Promise<ToolResult> {
   const { id } = args as { id: string };
-  const input: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {};
 
   for (const k of [
     "name",
@@ -313,30 +419,33 @@ async function handleUpdateAsset(args: Record<string, unknown>): Promise<ToolRes
     "location",
     "residual_value",
     "useful_life_years",
+    "sars_wear_tear_years",
     "depreciation_method",
     "notes",
   ] as const) {
-    if (args[k] !== undefined) input[k] = args[k];
+    if (args[k] !== undefined) body[k] = args[k];
   }
 
-  if (Object.keys(input).length === 0) {
+  if (Object.keys(body).length === 0) {
     throw new Error("update_asset requires at least one field to change.");
   }
 
-  const mutation = `
-    mutation Update($id: ID!, $input: UpdateAssetInput!) {
-      updateAsset(id: $id, input: $input) {
-        id
-        name
-        location
-      }
-    }
-  `;
-
-  const data = (await graphqlRequest(mutation, { id, input }, true)) as { updateAsset: unknown };
+  const token = getBearerToken();
+  if (!token) throw new Error("Not authenticated. Please run the login tool first.");
+  const response = await fetch(`${API_BASE}/assets/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json() as Record<string, unknown>;
+  if (!response.ok) throw new Error((result.message as string) ?? `HTTP ${response.status}`);
 
   return {
-    content: [{ type: "text", text: JSON.stringify({ success: true, asset: data.updateAsset }, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify({ success: true, ...result }, null, 2) }],
   };
 }
 
@@ -347,37 +456,91 @@ async function handleDisposeAsset(args: Record<string, unknown>): Promise<ToolRe
     disposal_proceeds?: number;
   };
 
-  const mutation = `
-    mutation Dispose($id: ID!, $date: Date!, $proceeds: Float) {
-      disposeAsset(id: $id, disposal_date: $date, disposal_proceeds: $proceeds) {
-        id
-        status
-        disposal_date
-        disposal_proceeds
-      }
-    }
-  `;
+  const body: Record<string, unknown> = { disposal_date };
+  if (disposal_proceeds !== undefined) body.disposal_proceeds = disposal_proceeds;
 
-  const data = (await graphqlRequest(
-    mutation,
-    { id, date: disposal_date, proceeds: disposal_proceeds ?? null },
-    true
-  )) as { disposeAsset: unknown };
+  const result = await apiPost(`/assets/${id}/dispose`, body);
 
   return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          {
-            success: true,
-            asset: data.disposeAsset,
-            note: "Disposal journal entry will be posted automatically on the next queue tick — disposal_transaction_id will populate shortly.",
-          },
-          null,
-          2
-        ),
-      },
-    ],
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
+  };
+}
+
+async function handleRevalueAsset(args: Record<string, unknown>): Promise<ToolResult> {
+  const { id, new_carrying_amount, date } = args as {
+    id: string;
+    new_carrying_amount: number;
+    date: string;
+  };
+
+  const result = await apiPost(`/assets/${id}/revalue`, { new_carrying_amount, date });
+
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
+  };
+}
+
+async function handleImpairAsset(args: Record<string, unknown>): Promise<ToolResult> {
+  const { id, impairment_amount, date, reason } = args as {
+    id: string;
+    impairment_amount: number;
+    date: string;
+    reason?: string;
+  };
+
+  const body: Record<string, unknown> = { impairment_amount, date };
+  if (reason) body.reason = reason;
+
+  const result = await apiPost(`/assets/${id}/impair`, body);
+
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
+  };
+}
+
+async function handleReverseImpairment(args: Record<string, unknown>): Promise<ToolResult> {
+  const { id, reversal_amount, date } = args as {
+    id: string;
+    reversal_amount: number;
+    date: string;
+  };
+
+  const result = await apiPost(`/assets/${id}/reverse-impairment`, { reversal_amount, date });
+
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
+  };
+}
+
+async function handleCapitaliseSubsequentCost(args: Record<string, unknown>): Promise<ToolResult> {
+  const { id, amount, date, description } = args as {
+    id: string;
+    amount: number;
+    date: string;
+    description?: string;
+  };
+
+  const body: Record<string, unknown> = { amount, date };
+  if (description) body.description = description;
+
+  const result = await apiPost(`/assets/${id}/capitalise`, body);
+
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(result, null, 2),
+    }],
   };
 }

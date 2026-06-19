@@ -1,4 +1,23 @@
-import { graphqlRequest } from "../lib/graphql.js";
+import { graphqlRequest, getBearerToken } from "../lib/graphql.js";
+const API_BASE = "http://localhost:8000/api";
+async function apiPatch(path, body) {
+    const token = getBearerToken();
+    if (!token)
+        throw new Error("Not authenticated. Please run the login tool first.");
+    const response = await fetch(`${API_BASE}${path}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+    });
+    const json = await response.json();
+    if (!response.ok)
+        throw new Error(json.message ?? `HTTP ${response.status}`);
+    return json;
+}
 /**
  * Appended to every tool that may surface compliance issues, flags, or
  * recommended follow-up actions. Instructs the model to call create_action
@@ -186,11 +205,10 @@ export const tools = [
     },
     {
         name: "search_documents",
-        description: "Semantic (vector) search across both transactions AND invoices in a single call. Use this when the user wants to find financial documents " +
-            "by natural-language description and doesn't care whether the match comes from a journal transaction or a customer invoice " +
-            "(e.g. 'anything to do with ACME Ltd last quarter', 'recent fuel-related entries'). " +
-            "Each result includes a 'kind' field (TRANSACTION or INVOICE) so you can branch on the document type. " +
-            "Prefer search_transactions when the user specifically wants posted journal entries only. " +
+        description: "Semantic (vector) search across transactions, invoices, AND PPE assets in a single call. Use this when the user wants to find financial documents " +
+            "by natural-language description (e.g. 'anything to do with ACME Ltd last quarter', 'recent fuel-related entries', 'all revaluation-model assets'). " +
+            "Each result includes a 'kind' field (TRANSACTION | INVOICE | ASSET) — branch on it to read the correct sub-object. " +
+            "Prefer search_transactions when the user specifically wants posted journal entries only; use get_assets for a full asset listing. " +
             "Requires prior login.",
         inputSchema: {
             type: "object",
@@ -226,6 +244,54 @@ export const tools = [
             required: ["purpose", "industry", "account_type"],
         },
     },
+    {
+        name: "update_transaction",
+        description: "Edit fields on an existing transaction. Can update the description, date, notes, patch existing journal lines, " +
+            "and/or append brand-new lines — all in one call. " +
+            "Use 'lines' to patch existing lines (requires their IDs — call get_transaction_by_reference first). " +
+            "Use 'new_lines' to append additional lines (no ID needed, just account/type/amount). " +
+            "Account and amount edits (lines or new_lines) are restricted to draft transactions; " +
+            "description, date, and notes can be changed on any non-immutable transaction. " +
+            "Requires prior login.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                transaction_id: { type: "string", description: "The numeric ID of the transaction to update." },
+                description: { type: "string", description: "New transaction description." },
+                transaction_date: { type: "string", description: "New date in YYYY-MM-DD format." },
+                notes: { type: "string", description: "New notes (pass null to clear)." },
+                lines: {
+                    type: "array",
+                    description: "Existing journal lines to patch. Each entry must include 'id' plus one or more fields to change.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            id: { type: "number", description: "Journal line ID (from get_transaction_by_reference)." },
+                            chart_of_account_id: { type: "number", description: "Replace the account on this line (draft only)." },
+                            amount: { type: "number", description: "New amount for this line (draft only, must be > 0)." },
+                            description: { type: "string", description: "Replace the line-level note." },
+                        },
+                        required: ["id"],
+                    },
+                },
+                new_lines: {
+                    type: "array",
+                    description: "New journal lines to append to the transaction (draft only).",
+                    items: {
+                        type: "object",
+                        properties: {
+                            chart_of_account_id: { type: "number", description: "Account ID for the new line." },
+                            type: { type: "string", enum: ["debit", "credit"], description: "Debit or credit." },
+                            amount: { type: "number", description: "Amount (must be > 0)." },
+                            description: { type: "string", description: "Optional line note." },
+                        },
+                        required: ["chart_of_account_id", "type", "amount"],
+                    },
+                },
+            },
+            required: ["transaction_id"],
+        },
+    },
 ];
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 export async function handle(name, args) {
@@ -246,6 +312,8 @@ export async function handle(name, args) {
             return handleSearchTransactions(args);
         case "search_documents":
             return handleSearchDocuments(args);
+        case "update_transaction":
+            return handleUpdateTransaction(args);
         default:
             return null;
     }
@@ -442,7 +510,7 @@ async function handleSearchDocuments(args) {
     const { prompt } = args;
     const query = `
     query Search($p: String!) {
-      semanticSearchDocuments(prompt: $p, limit: 10, kinds: [TRANSACTION, INVOICE]) {
+      semanticSearchDocuments(prompt: $p, limit: 10, kinds: [TRANSACTION, INVOICE, ASSET]) {
         kind
         similarity
         amount
@@ -452,6 +520,7 @@ async function handleSearchDocuments(args) {
         doc_date
         transaction { description company { registered_name } }
         invoice     { invoice_number customer_name customer_email }
+        asset       { id name status cost acquisition_date ppe_class { name accounting_policy } }
       }
     }
   `;
@@ -704,5 +773,29 @@ async function handleSuggestChartOfAccount(args) {
                 }, null, 2),
             },
         ],
+    };
+}
+async function handleUpdateTransaction(args) {
+    const transactionId = args.transaction_id;
+    const body = {};
+    if (args.description !== undefined)
+        body.description = args.description;
+    if (args.transaction_date !== undefined)
+        body.transaction_date = args.transaction_date;
+    if ("notes" in args)
+        body.notes = args.notes;
+    if (args.lines !== undefined)
+        body.lines = args.lines;
+    if (args.new_lines !== undefined)
+        body.new_lines = args.new_lines;
+    if (Object.keys(body).length === 0) {
+        return {
+            content: [{ type: "text", text: JSON.stringify({ error: "No fields provided to update." }) }],
+            isError: true,
+        };
+    }
+    const result = await apiPatch(`/transactions/${transactionId}`, body);
+    return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
 }
