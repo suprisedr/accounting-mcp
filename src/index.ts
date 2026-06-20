@@ -10,6 +10,7 @@ import * as quotations from "./tools/quotations.js";
 import * as trialbalance from "./tools/trialbalance.js";
 import * as company from "./tools/company.js";
 import * as assets from "./tools/assets.js";
+import * as intangibles from "./tools/intangibles.js";
 import * as actions from "./tools/actions.js";
 
 // All tools registered with the server — ordered by domain
@@ -22,11 +23,12 @@ const allTools = [
   ...trialbalance.tools,
   ...company.tools,
   ...assets.tools,
+  ...intangibles.tools,
   ...actions.tools,
 ];
 
 // Domain handlers — each returns null when the tool name is not theirs
-const handlers = [auth.handle, transactions.handle, invoices.handle, inventory.handle, quotations.handle, trialbalance.handle, company.handle, assets.handle, actions.handle];
+const handlers = [auth.handle, transactions.handle, invoices.handle, inventory.handle, quotations.handle, trialbalance.handle, company.handle, assets.handle, intangibles.handle, actions.handle];
 
 // ─── Server setup ─────────────────────────────────────────────────────────────
 
