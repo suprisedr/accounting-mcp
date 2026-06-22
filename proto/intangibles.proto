@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service IntangibleService {
+  rpc GetIntangibles (GetIntangiblesRequest) returns (IntangiblesResponse);
+  rpc GetIntangible (GetIntangibleRequest) returns (IntangibleResponse);
+  rpc CreateIntangible (CreateIntangibleRequest) returns (IntangibleResponse);
+  rpc UpdateIntangible (UpdateIntangibleRequest) returns (IntangibleResponse);
+  rpc DisposeIntangible (IntangibleActionRequest) returns (IntangibleResponse);
+  rpc RevalueIntangible (IntangibleActionRequest) returns (IntangibleResponse);
+  rpc ImpairIntangible (IntangibleActionRequest) returns (IntangibleResponse);
+  rpc ReverseImpairment (IntangibleActionRequest) returns (IntangibleResponse);
+  rpc CapitaliseSubsequentCost (IntangibleActionRequest) returns (IntangibleResponse);
+}
+
+message GetIntangiblesRequest {
+  int64 company_id = 1;
+  string status = 2;
+}
+
+message GetIntangibleRequest {
+  int64 id = 1;
+}
+
+message CreateIntangibleRequest {
+  string data_json = 1;
+}
+
+message UpdateIntangibleRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message IntangibleActionRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message IntangibleResponse {
+  string data = 1;
+  string message = 2;
+}
+
+message IntangiblesResponse {
+  string data = 1;
+}

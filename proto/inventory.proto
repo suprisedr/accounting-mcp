@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service InventoryService {
+  rpc GetInventory (GetInventoryRequest) returns (InventoryResponse);
+  rpc GetInventoryItem (GetItemRequest) returns (ItemResponse);
+  rpc CreateInventoryItem (CreateItemRequest) returns (ItemResponse);
+  rpc UpdateInventoryItem (UpdateItemRequest) returns (ItemResponse);
+  rpc RecordMovement (MovementRequest) returns (MovementResponse);
+  rpc WriteDown (WriteDownRequest) returns (ItemResponse);
+  rpc ReverseWriteDown (ReverseWriteDownRequest) returns (ItemResponse);
+}
+
+message GetInventoryRequest {
+  int64 company_id = 1;
+  string search = 2;
+}
+
+message GetItemRequest {
+  int64 id = 1;
+}
+
+message CreateItemRequest {
+  string data_json = 1;
+}
+
+message UpdateItemRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message MovementRequest {
+  int64 inventory_item_id = 1;
+  string data_json = 2;
+}
+
+message WriteDownRequest {
+  int64 inventory_item_id = 1;
+  string data_json = 2;
+}
+
+message ReverseWriteDownRequest {
+  int64 inventory_item_id = 1;
+  string data_json = 2;
+}
+
+message InventoryResponse {
+  string data = 1;
+}
+
+message ItemResponse {
+  string data = 1;
+  string message = 2;
+}
+
+message MovementResponse {
+  bool success = 1;
+  int64 movement_id = 2;
+  double quantity_on_hand = 3;
+}

@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service CompanyService {
+  rpc GetCompany (CompanyRequest) returns (CompanyResponse);
+  rpc GetChartOfAccounts (ChartOfAccountsRequest) returns (ChartOfAccountsResponse);
+  rpc CreateChartOfAccount (CreateChartOfAccountRequest) returns (ChartOfAccountResponse);
+  rpc SuggestChartOfAccount (SuggestChartOfAccountRequest) returns (ChartOfAccountResponse);
+  rpc GetTrialBalance (TrialBalanceRequest) returns (TrialBalanceResponse);
+  rpc GetVatRegistrationStatus (CompanyRequest) returns (VatStatusResponse);
+}
+
+message CompanyRequest {
+  int64 company_id = 1;
+}
+
+message CompanyResponse {
+  string data = 1;  // JSON-encoded company data
+}
+
+message ChartOfAccountsRequest {
+  int64 company_id = 1;
+  string search = 2;
+  string account_type = 3;
+}
+
+message ChartOfAccountsResponse {
+  string data = 1;  // JSON-encoded array
+}
+
+message CreateChartOfAccountRequest {
+  int64 company_id = 1;
+  string account_code = 2;
+  string account_name = 3;
+  string account_type = 4;
+  string category = 5;
+  string cash_flow_category = 6;
+  bool is_contra = 7;
+}
+
+message ChartOfAccountResponse {
+  string data = 1;  // JSON-encoded account
+}
+
+message SuggestChartOfAccountRequest {
+  int64 company_id = 1;
+  string description = 2;
+}
+
+message TrialBalanceRequest {
+  int64 company_id = 1;
+  string as_of_date = 2;
+}
+
+message TrialBalanceResponse {
+  string data = 1;  // JSON-encoded trial balance
+}
+
+message VatStatusResponse {
+  string data = 1;
+}

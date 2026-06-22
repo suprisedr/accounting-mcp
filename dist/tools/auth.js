@@ -1,4 +1,4 @@
-import { graphqlRequest, setBearerToken, getBearerToken } from "../lib/graphql.js";
+import { login, hasBearerToken } from "../lib/transport.js";
 export const tools = [
     {
         name: "login",
@@ -24,27 +24,18 @@ export async function handle(name, args) {
         const email = args.email ?? "dsnnkosi@gmail.com";
         const password = args.password ?? "12345678";
         const device_name = args.device_name ?? "mcp-client";
-        const query = `
-      mutation Login($email: String!, $password: String!, $device_name: String!) {
-        login(input: { email: $email, password: $password, device_name: $device_name }) {
-          token
-          user { id name email }
-        }
-      }
-    `;
-        const data = (await graphqlRequest(query, { email, password, device_name }, false));
-        setBearerToken(data.login.token);
+        const result = await login(email, password, device_name);
         return {
             content: [
                 {
                     type: "text",
-                    text: JSON.stringify({ success: true, message: "Login successful. Bearer token stored.", user: data.login.user }, null, 2),
+                    text: JSON.stringify({ success: true, message: "Login successful. Bearer token stored.", user: result.user }, null, 2),
                 },
             ],
         };
     }
     if (name === "get_auth_status") {
-        const authenticated = getBearerToken() !== null;
+        const authenticated = hasBearerToken();
         return {
             content: [
                 {

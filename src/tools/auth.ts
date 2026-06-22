@@ -1,5 +1,5 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { graphqlRequest, setBearerToken, getBearerToken } from "../lib/graphql.js";
+import { login, hasBearerToken } from "../lib/transport.js";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
@@ -35,27 +35,14 @@ export async function handle(
     const password = (args.password as string | undefined) ?? "12345678";
     const device_name = (args.device_name as string | undefined) ?? "mcp-client";
 
-    const query = `
-      mutation Login($email: String!, $password: String!, $device_name: String!) {
-        login(input: { email: $email, password: $password, device_name: $device_name }) {
-          token
-          user { id name email }
-        }
-      }
-    `;
-
-    const data = (await graphqlRequest(query, { email, password, device_name }, false)) as {
-      login: { token: string; user: { id: string; name: string; email: string } };
-    };
-
-    setBearerToken(data.login.token);
+    const result = await login(email, password, device_name);
 
     return {
       content: [
         {
           type: "text",
           text: JSON.stringify(
-            { success: true, message: "Login successful. Bearer token stored.", user: data.login.user },
+            { success: true, message: "Login successful. Bearer token stored.", user: result.user },
             null,
             2
           ),
@@ -65,7 +52,7 @@ export async function handle(
   }
 
   if (name === "get_auth_status") {
-    const authenticated = getBearerToken() !== null;
+    const authenticated = hasBearerToken();
     return {
       content: [
         {

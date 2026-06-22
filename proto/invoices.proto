@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service InvoiceService {
+  rpc GetInvoices (GetInvoicesRequest) returns (InvoicesResponse);
+  rpc CreateInvoice (CreateInvoiceRequest) returns (InvoiceResponse);
+  rpc SearchDocuments (SearchDocumentsRequest) returns (DocumentsResponse);
+  rpc GetQuotations (GetInvoicesRequest) returns (InvoicesResponse);
+  rpc CreateQuotation (CreateInvoiceRequest) returns (InvoiceResponse);
+}
+
+message GetInvoicesRequest {
+  int64 company_id = 1;
+  string status = 2;
+  string search = 3;
+}
+
+message CreateInvoiceRequest {
+  string data_json = 1;
+}
+
+message InvoiceResponse {
+  string data = 1;
+  string message = 2;
+}
+
+message InvoicesResponse {
+  string data = 1;
+}
+
+message SearchDocumentsRequest {
+  int64 company_id = 1;
+  string query = 2;
+  int32 limit = 3;
+}
+
+message DocumentsResponse {
+  string data = 1;
+}

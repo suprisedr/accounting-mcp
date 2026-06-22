@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service TransactionService {
+  rpc CreateTransaction (CreateTransactionRequest) returns (TransactionResponse);
+  rpc UpdateTransaction (UpdateTransactionRequest) returns (TransactionResponse);
+  rpc SearchTransactions (SearchTransactionsRequest) returns (TransactionsResponse);
+  rpc GetTransactionByReference (GetTransactionByReferenceRequest) returns (TransactionResponse);
+}
+
+message CreateTransactionRequest {
+  int64 company_id = 1;
+  string transaction_date = 2;
+  string description = 3;
+  string reference = 4;
+  string status = 5;
+  string notes = 6;
+  string lines_json = 7;  // JSON-encoded journal lines array
+}
+
+message UpdateTransactionRequest {
+  int64 transaction_id = 1;
+  string transaction_date = 2;
+  string description = 3;
+  string reference = 4;
+  string status = 5;
+  string notes = 6;
+  string lines_json = 7;
+}
+
+message TransactionResponse {
+  string data = 1;
+}
+
+message SearchTransactionsRequest {
+  int64 company_id = 1;
+  string query = 2;
+  int32 limit = 3;
+}
+
+message TransactionsResponse {
+  string data = 1;
+}
+
+message GetTransactionByReferenceRequest {
+  int64 company_id = 1;
+  string reference = 2;
+}

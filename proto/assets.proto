@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package chainbook;
+
+option php_namespace = "App\\Grpc\\Generated";
+option php_metadata_namespace = "App\\Grpc\\Generated\\GPBMetadata";
+
+service AssetService {
+  rpc GetAssets (GetAssetsRequest) returns (AssetsResponse);
+  rpc GetAsset (GetAssetRequest) returns (AssetResponse);
+  rpc CreateAsset (CreateAssetRequest) returns (AssetResponse);
+  rpc UpdateAsset (UpdateAssetRequest) returns (AssetResponse);
+  rpc DisposeAsset (DisposeAssetRequest) returns (AssetResponse);
+  rpc GetDepreciationSchedule (GetAssetRequest) returns (ScheduleResponse);
+  rpc RevalueAsset (AssetActionRequest) returns (AssetResponse);
+  rpc ImpairAsset (AssetActionRequest) returns (AssetResponse);
+  rpc ReverseImpairment (AssetActionRequest) returns (AssetResponse);
+  rpc CapitaliseSubsequentCost (AssetActionRequest) returns (AssetResponse);
+}
+
+message GetAssetsRequest {
+  int64 company_id = 1;
+  string status = 2;
+  string ppe_class = 3;
+}
+
+message GetAssetRequest {
+  int64 id = 1;
+}
+
+message CreateAssetRequest {
+  string data_json = 1;  // JSON-encoded asset creation data
+}
+
+message UpdateAssetRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message DisposeAssetRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message AssetActionRequest {
+  int64 id = 1;
+  string data_json = 2;
+}
+
+message AssetResponse {
+  string data = 1;
+}
+
+message AssetsResponse {
+  string data = 1;
+}
+
+message ScheduleResponse {
+  string data = 1;
+}
