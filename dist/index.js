@@ -12,6 +12,9 @@ import * as assets from "./tools/assets.js";
 import * as intangibles from "./tools/intangibles.js";
 import * as leases from "./tools/leases.js";
 import * as actions from "./tools/actions.js";
+import * as investmentProperties from "./tools/investment-properties.js";
+import * as heldForSale from "./tools/held-for-sale.js";
+import * as biologicalAssets from "./tools/biological-assets.js";
 // All tools registered with the server — ordered by domain
 const allTools = [
     ...auth.tools,
@@ -25,9 +28,12 @@ const allTools = [
     ...intangibles.tools,
     ...leases.tools,
     ...actions.tools,
+    ...investmentProperties.tools,
+    ...heldForSale.tools,
+    ...biologicalAssets.tools,
 ];
 // Domain handlers — each returns null when the tool name is not theirs
-const handlers = [auth.handle, transactions.handle, invoices.handle, inventory.handle, quotations.handle, trialbalance.handle, company.handle, assets.handle, intangibles.handle, leases.handle, actions.handle];
+const handlers = [auth.handle, transactions.handle, invoices.handle, inventory.handle, quotations.handle, trialbalance.handle, company.handle, assets.handle, intangibles.handle, leases.handle, actions.handle, investmentProperties.handle, heldForSale.handle, biologicalAssets.handle];
 // ─── Server setup ─────────────────────────────────────────────────────────────
 const server = new Server({ name: "chainbook-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: allTools }));
